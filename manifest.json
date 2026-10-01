@@ -1,0 +1,11 @@
+{
+  "display_name": "净文复制 · CleanCopy",
+  "loading_order": 100,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "notyourlittlecheese",
+  "version": "1.0.0",
+  "homePage": "https://github.com/notyourlittlecheese/SillyTavern-CleanCopy"
+}

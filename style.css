@@ -1,0 +1,13 @@
+/* Message buttons deliberately have no custom styling: mes_button + Font Awesome
+   inherits SillyTavern's toolbar theme, hover, opacity and sizing. */
+#cleancopy_settings .cleancopy_rule,
+#cleancopy_settings .cleancopy_add {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-block: 0.5em;
+    flex-wrap: wrap;
+}
+#cleancopy_settings .cleancopy_rule label { flex: 1 1 6em; overflow-wrap: anywhere; }
+#cleancopy_settings .cleancopy_rule select { flex: 2 1 12em; width: auto; }
+#cleancopy_settings .cleancopy_add input { flex: 1 1 10em; width: auto; }
