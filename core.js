@@ -75,3 +75,104 @@ export function extractVisibleText(root, rules = DEFAULT_RULES) {
     }
     return cleanText(visit(root), rules);
 }
+
+export function normalizeTags(tags) {
+    return [...new Set(tags.map(tag => String(tag).trim().toLowerCase()).filter(tag => /^[a-z][a-z0-9-]*$/.test(tag)))];
+}
+
+// Scan tag boundaries before HTML parsing: custom tag names must survive the
+// browser sanitizer, and tags inside comments/code must never become sections.
+export function findTagSections(source, tags) {
+    const wanted = new Set(normalizeTags(tags));
+    const text = String(source ?? '')
+        .replace(/<!--[\s\S]*?(?:-->|$)/g, '')
+        .replace(/(^|\n) {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n {0,3}\2[ \t]*(?=\n|$|<)|$)/g, '\n')
+        .replace(/(`+)[\s\S]*?\1/g, '')
+        .replace(/<(script|style|pre|code)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, '');
+    const token = /<\/?([a-z][a-z0-9-]*)\b(?:"[^"]*"|'[^']*'|[^'">])*>/gi;
+    const stack = [];
+    const sections = [];
+    for (const match of text.matchAll(token)) {
+        const tag = match[1].toLowerCase();
+        if (!wanted.has(tag)) continue;
+        if (match[0].startsWith('</')) {
+            const index = stack.map(item => item.tag).lastIndexOf(tag);
+            if (index === -1) continue;
+            const [opened] = stack.splice(index);
+            if (!stack.length) sections.push({ tag: opened.tag, html: text.slice(opened.start, match.index), offset: opened.start });
+        } else if (!/\/\s*>$/.test(match[0])) {
+            stack.push({ tag, start: match.index + match[0].length });
+        }
+    }
+    // Streaming/incomplete messages may have no closing tag yet.
+    if (stack.length) sections.push({ tag: stack[0].tag, html: text.slice(stack[0].start), offset: stack[0].start });
+    return sections.sort((a, b) => a.offset - b.offset);
+}
+
+// Inert conversion for explicitly requested hidden sections. Never attach the
+// generated HTML to the live document or execute scripts/style from a message.
+export function sectionToText(source, makeHtml, doc, rules = DEFAULT_RULES) {
+    const template = doc.createElement('template');
+    template.innerHTML = makeHtml(source);
+    const removed = new Set(normalizeRules(rules).filter(r => r.enabled && r.mode === 'remove').map(r => r.tag));
+    const blocks = new Set([...PARAGRAPHS, 'DIV', 'LI', 'UL', 'OL', 'DETAILS', 'SUMMARY', 'TR']);
+    function read(node) {
+        if (node.nodeType === 3) return node.data;
+        if (node.nodeType === 8) return '';
+        if (node.nodeType === 1) {
+            if (OMIT.has(node.tagName) || removed.has(node.localName)) return '';
+            if (node.tagName === 'BR') return '\n';
+        }
+        const value = [...node.childNodes].map(read).join('');
+        if (blocks.has(node.tagName)) return `\n${value.trim()}\n`;
+        if (node.tagName === 'TD' || node.tagName === 'TH') return `${value}\t`;
+        return value;
+    }
+    return cleanText(read(template.content), rules);
+}
+
+export function composeCopy(root, raw, selectedTags, rules, makeHtml) {
+    const tags = normalizeTags(selectedTags);
+    if (!tags.length) return { text: extractVisibleText(root, rules), missing: [] };
+    const selected = new Set(tags);
+    // Keep sections out of the body even if their short-click rule is disabled.
+    const bodyRules = normalizeRules(rules).filter(rule => !selected.has(rule.tag));
+    bodyRules.push(...tags.map(tag => ({ tag, enabled: true, mode: 'remove' })));
+    const body = extractVisibleText(root, bodyRules);
+    const sectionRules = normalizeRules(rules).filter(rule => !selected.has(rule.tag));
+    sectionRules.push(...tags.map(tag => ({ tag, enabled: true, mode: 'text' })));
+    const presentInRaw = new Set(tags.filter(tag => findTagSections(raw, [tag]).length));
+    const sections = findTagSections(raw, tags);
+    const fallbackTags = tags.filter(tag => !presentInRaw.has(tag));
+    if (fallbackTags.length) {
+        // Some display regexes create <details> wrappers absent from the source.
+        // Read a detached serialization without opening/altering the live fold.
+        root.querySelectorAll(fallbackTags.join(',')).forEach(node => {
+            if (node.parentElement?.closest(tags.join(',')) && root.contains(node.parentElement.closest(tags.join(',')))) return;
+            const value = node.innerHTML;
+            const nestedSource = findTagSections(value, [...presentInRaw]);
+            if (nestedSource.length) return; // Source-backed nested tags are already included.
+            const withoutTitle = node.cloneNode(true);
+            withoutTitle.querySelectorAll('summary').forEach(summary => summary.remove());
+            sections.push({ tag: node.localName, html: value, dedupHtml: withoutTitle.innerHTML });
+        });
+    }
+    const rendered = sections.map(section => ({
+        tag: section.tag,
+        text: sectionToText(section.html, makeHtml, root.ownerDocument, sectionRules),
+        dedupText: section.dedupHtml === undefined ? undefined : sectionToText(section.dedupHtml, makeHtml, root.ownerDocument, sectionRules),
+    }));
+    const unique = [];
+    const seen = new Set(body ? [body.replace(/\s+/g, '')] : []);
+    const sourceSignature = rendered.filter(item => item.dedupText === undefined).map(item => item.text.replace(/\s+/g, '')).join('');
+    for (const item of rendered) {
+        const signature = item.text.replace(/\s+/g, '');
+        const contentSignature = item.dedupText?.replace(/\s+/g, '');
+        if (contentSignature && (seen.has(contentSignature) || contentSignature === sourceSignature)) continue;
+        if (!signature || seen.has(signature)) continue;
+        seen.add(signature);
+        unique.push(item.text);
+    }
+    const missing = tags.filter(tag => !presentInRaw.has(tag) && !sections.some(section => section.tag === tag));
+    return { text: [body, ...unique].filter(Boolean).join('\n\n'), missing };
+}

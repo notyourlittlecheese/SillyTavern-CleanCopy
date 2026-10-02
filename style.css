@@ -1,5 +1,4 @@
-/* Message buttons deliberately have no custom styling: mes_button + Font Awesome
-   inherits SillyTavern's toolbar theme, hover, opacity and sizing. */
+/* Keep native mes_button theme/layout. SVG follows the button's font size/color. */
 #cleancopy_settings .cleancopy_rule,
 #cleancopy_settings .cleancopy_add {
     display: flex;
@@ -11,3 +10,36 @@
 #cleancopy_settings .cleancopy_rule label { flex: 1 1 6em; overflow-wrap: anywhere; }
 #cleancopy_settings .cleancopy_rule select { flex: 2 1 12em; width: auto; }
 #cleancopy_settings .cleancopy_add input { flex: 1 1 10em; width: auto; }
+
+.mes_cleancopy { -webkit-touch-callout: none; }
+.mes_cleancopy > svg {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    pointer-events: none;
+}
+#cleancopy_menu {
+    color: var(--SmartThemeBodyColor, inherit);
+    background: var(--SmartThemeBlurTintColor, #242424);
+    border: 1px solid var(--SmartThemeBorderColor, #777);
+    border-radius: 12px;
+    padding: 1em;
+    width: min(34rem, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    overflow: auto;
+    box-sizing: border-box;
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px));
+}
+#cleancopy_menu::backdrop { background: rgb(0 0 0 / 35%); }
+#cleancopy_menu h3 { margin-top: 0; }
+#cleancopy_menu .cleancopy_presets,
+#cleancopy_menu .cleancopy_actions,
+#cleancopy_menu .cleancopy_choices {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    margin-block: 0.8em;
+}
+#cleancopy_menu .menu_button { width: auto; margin: 0; }
+#cleancopy_menu .cleancopy_choices label { margin-inline-end: 0.6em; }
